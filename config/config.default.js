@@ -1,109 +1,180 @@
-'use strict'
+'use strict';
+
+const path = require('path');
 
 /**
- * 默认的应用配置
+ * @param {Egg.EggAppInfo} appInfo app info
  */
-
-const { getLocalhost } = require('../app/extend/helper')
-
-module.exports = app => {
-  const config = {}
+module.exports = (appInfo) => {
+  /**
+   * built-in config
+   * @type {Egg.EggAppConfig}
+   */
+  const config = (exports = {});
 
   /**
-   * cookie 签名 token，建议修改
+   * cookie 签名 token
+   * use for cookie sign key, should change to your own and keep security
    */
-  const key = '_1625119468325'
-  config.keys = app.name + key
+  config.keys = `${appInfo.name}_1578362616760_8753,${appInfo.name}_1578362616760_8754`;
 
   /**
    * 中间件配置
    */
-  config.middleware = [ 'catchError', 'permission' ]
-
-  /**
-   * 数据库相关配置
-   */
-  config.sequelize = {
-    // 全局配置
-    define: {
-      // 是否自动进行下划线转换（这里是因为 DB 默认的命名规则是下划线方式，而我们使用的大多数是驼峰方式）
-      underscored: true,
-      // 启用 sequelize 默认时间戳设置
-      timestamps: true,
-      // 禁用 sequelize 默认给表名设置复数
-      freezeTableName: true
-    },
-    // 时区修正
-    timezone: '+08:00',
-    // 格式化返回的数据结构
-    dialectOptions: {
-      dateStrings: true,
-      typeCast: true
-    }
-  }
-
-  /**
-   * 自定义的应用配置，修改后全局生效
-   */
-  // 接口前缀名称，跟随业务系统修改
-  const apiPrefixName = 'api'
-  // 接口完整前缀
-  const apiPrefix = `/${apiPrefixName}`
-  const userConfig = {
-    // 应用名称，用于日志文件目录指定、cookie 的 key 指定，具有唯一性，默认是 app.name，也可以改成其他字符串
-    appName: app.name,
-    apiPrefixName,
-    apiPrefix,
-    // 默认的 code 码和错误提示信息配置，只需要改这一个地方即可
-    resCode: {
-      // 服务器异常的 code 标识和提示，一般都不需要改
-      serverError: { code: 500, message: '服务器异常' },
-      // 成功的 code 标识
-      success: { code: 0 },
-      // 出错的 code 标识和提示
-      error: { code: 602, message: '参数异常' },
-      // 未登录的 code 标识和提示
-      notLogged: { code: 601, message: '请先登录后再操作' }
-    }
-  }
-
-  /**
-   * cookie 配置
-   */
-  // 默认的 cookie 失效时间配置
-  config.session = {
-    key: `_${userConfig.appName}_${apiPrefixName}_`,
-    // 7 天
-    maxAge: 24 * 3600 * 1000 * 7,
-    httpOnly: true,
-    encrypt: true
-  }
+  config.middleware = ['logHandler', 'jurisdictionHandler', 'errorHandler'];
 
   /**
    * 安全策略配置
    */
   config.security = {
-    // 关闭 CSRF 攻击防御（伪造用户请求向网站发起恶意请求）
-    // csrf: {
-    //   enable: false
-    // }
-  }
-  // 设置白名单
-  const port = 9001 // 前端端口，跟随实际情况修改
-  const domainWhiteList = [
-    ...new Set([
-      `http://127.0.0.1:${port}`,
-      `http://localhost:${port}`,
-      // 服务启动时尝试自动获取本机 IP 设置白名单
-      `http://${getLocalhost()}:${port}`
-    ])
-  ]
-  config.security = { domainWhiteList }
+    csrf: {
+      headerName: 'x-csrf-token', // 通过 header 传递 CSRF token 的默认字段为 x-csrf-token
+      enable: false,
+      // 判断是否需要 ignore 的方法，请求上下文 context 作为第一个参数
+      ignore: (ctx) => {
+        return [
+          '/api/v1/users/login', // 登录
+          '/api/v1/users', // 注册
+          '/api/v1/users/password', // 修改密码
+          '/api/v1/users/refreshToken', // 刷新token
+          '/api/v1/users/github/login', // github登录
+          '/api/v1/verification_codes', // 创建验证码
+        ].includes(ctx.request.url);
+      },
+    },
+    // domainWhiteList: ['http://localhost:8000'],
+  };
+
+  // 注意，开启此模式后，应用就默认自己处于反向代理之后，
+  // 会支持通过解析约定的请求头来获取用户真实的 IP，协议和域名。
+  // 如果你的服务未部署在反向代理之后，请不要开启此配置，以防被恶意用户伪造请求 IP 等信息。
+  config.proxy = true;
+
+  config.bodyParser = {
+    enableTypes: ['json', 'form', 'text'],
+    extendTypes: {
+      json: 'application/custom-json',
+      // json: 'application/json',
+      text: ['application/xml', 'text/xml', 'text/html'],
+    },
+  };
+
+  config.jwt = {
+    secret: 'Great4-M',
+    secret_refresh: 'Great4-M-refresh',
+    enable: true, // default is false
+    match: '/jwt', // optional
+  };
+
+  config.validate = {
+    // 配置参数校验器，基于parameter
+    convert: true, // 对参数可以使用convertType规则进行类型转换
+    // validateRoot: false,   // 限制被验证值必须是一个对象。
+  };
+
+  /**
+   * 自动生成文档配置
+   * 文档地址：https://github.com/Yanshijie-EL/egg-swagger-doc/blob/master/config/config.default.js
+   */
+  config.swaggerdoc = {
+    basePath: '/',
+    dirScanner: './app/controller',
+    apiInfo: {
+      title: 'egg-beehive',
+      description: 'egg-beehive api doc',
+      version: '1.0.0',
+    },
+    schemes: ['http'],
+    enable: true,
+    routerMap: false,
+    securityDefinitions: {
+      apikey: {
+        type: 'apiKey',
+        name: 'Authorization',
+        in: 'header',
+      },
+      oauth2: {
+        type: 'oauth2',
+        tokenUrl: 'http://127.0.0.1:7002/api/v1/users/login',
+        flow: 'password',
+        scopes: {
+          'write:access_token': 'write access_token',
+          'read:access_token': 'read access_token',
+        },
+      },
+    },
+    enableSecurity: true,
+  };
+
+  config.healthy = {
+    readinessPath: '/api/readiness',
+    livenessPath: '/api/liveness',
+  };
+
+  // 默认的 cookie 失效时间配置
+  config.session = {
+    maxAge: 24 * 3600 * 1000, // ms
+    // maxAge: 20 * 1000, // ms
+    key: 'EGG_SESS',
+    httpOnly: true,
+    signed: false,
+    encrypt: false,
+    renew: true,
+    // sameSite: null,
+  };
+
+  config.mailer = {
+    host: 'smtp.qq.com',
+    port: 465,
+    secure: true, // true for 465, false for other ports
+    auth: {
+      user: process.env.MailerAuthUser, // generated ethereal user
+      pass: process.env.MailerAuthPass, // generated ethereal password
+    },
+  };
+
+  config.multipart = {
+    fileSize: '20mb',
+    // fileExtensions: [
+    //   '.docx',
+    //   '.doc',
+    //   '.xls',
+    //   '.xlsx',
+    // ],
+    whitelist: (filename) => true, // 不做类型限制
+  };
+
+  // config.sentry = {
+  //   dsn: process.env.SentyDsn || '',
+  // };
+
+  config.static = {
+    prefix: '/public/',
+    dir: path.join(appInfo.baseDir, `../eggStatic/${appInfo.name}/public`),
+    upload_dir: 'uploads',
+  };
+
+  // 接口前缀名称，跟随业务系统修改
+  const apiPrefixName = 'api';
+  const apiPrefix = `/${apiPrefixName}`;
+  const userConfig = {
+    // myAppName: 'egg',
+    verification_mode: 'jwt',
+    jwt_exp: 60 * 10, // jwt过期时间(秒)
+    jwt_refresh_exp: 60 * 60 * 24 * 15, // refreshToken过期时间(秒)
+    socketOnlineUserRoomName: 'onlineUserRoom:', // socket所有在线用户房间名
+    socketProjectRoomNamePrefix: 'roomProject:', // socket项目房间名前缀
+    socketRedisExp: 30, // socket消息存入redis过期时间(秒)
+    staticUseOSS: false, // 上传静态文件，使用云OSS存储
+    inviteExpiresRange: 7 * 24 * 60, // 邀请有效时间（分钟）
+    inviteExpiresCreateRange: 3 * 24 * 60, // 邀请有效时间更新时间，获取某个邀请时，如有效时间小于此时间，则创建一个新的邀请（分钟）
+  };
+
   // 默认允许跨域，生产环境关闭此设置
   config.cors = {
     origin: '*',
-    allowMethods: 'GET,HEAD,PUT,POST,DELETE,PATCH'
-  }
+    allowMethods: 'GET,HEAD,PUT,POST,DELETE,PATCH',
+  };
 
   /**
    * 权限配置
@@ -114,52 +185,18 @@ module.exports = app => {
       `${apiPrefix}/v1/user/mock`,
       `${apiPrefix}/v1/user/login`,
       `${apiPrefix}/v1/user/logout`,
-      `${apiPrefix}/v1/user/phone`
-    ]
-  }
+      `${apiPrefix}/v1/user/phone`,
+    ],
+  };
 
   /**
-   * 参数校验配置
-   */
-  config.validatePlus = {
-    // 校验通过了始终返回 true，不通过返回 false
-    resolveError(ctx, errors) {
-      if (errors.length) {
-        // 始终返回第一个错误
-        ctx.body = {
-          code: userConfig.resCode.error.code,
-          message: errors[0].message
-        }
-      }
-    }
-  }
-
-  /**
-   * 自动生成文档配置
-   * 文档地址：https://github.com/Yanshijie-EL/egg-swagger-doc/blob/master/config/config.default.js
-   */
-  config.swaggerdoc = {
-    dirScanner: './app/controller',
-    basePath: apiPrefix,
-    apiInfo: {
-      title: '接口平台',
-      description: `${userConfig.appName} 接口平台。`,
-      version: '1.0.0'
-    },
-    schemes: [ 'http', 'https' ]
-  }
-
-  /**
-   * 小程序平台相关配置，可往下新增头条小程序、百度小程序、钉钉小程序等相关配置
+   * 小程序平台相关配置
    */
   // 微信小程序配置
-  config.wechatApp = {
-    appId: '',
-    secret: ''
-  }
+  config.wechatApp = {};
 
   return {
     ...config,
-    ...userConfig
-  }
-}
+    ...userConfig,
+  };
+};

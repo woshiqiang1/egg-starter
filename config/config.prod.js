@@ -1,32 +1,105 @@
-'use strict'
+'use strict';
+const { v4: uuidv4 } = require('uuid');
 
-/**
- * 生产环境
- */
+exports.sequelize = {
+  dialect: 'mysql',
+  host: process.env.MySqlHost || '127.0.0.1',
+  port: process.env.MySqlPort || 3306,
+  password: process.env.MySqlPassword,
+  database: process.env.MySqlDatabase || 'egg-beehive-prod',
+  timezone: '+08:00',
+  define: {
+    raw: true,
+    underscored: false,
+    charset: 'utf8',
+    timestamp: true,
+    createdAt: 'created_at',
+    updatedAt: 'updated_at',
+    deletedAt: 'deleted_at',
+  },
+  dialectOptions: {
+    dateStrings: true,
+    typeCast: true,
+    // collate: 'utf8_general_ci',
+  },
+};
 
-const os = require('os')
+exports.logger = {
+  // dir: '',
+};
 
-module.exports = app => {
-  const config = {}
+exports.cors = {
+  // origin: [ 'http://192.168.6.150:8080' ],
+  // allowMethods: 'GET,HEAD,PUT,POST,DELETE,PATCH',
+};
 
-  config.sequelize = {
-    username: 'root',
-    password: '',
-    database: 'template_node_egg',
-    host: '127.0.0.1',
-    dialect: 'mysql'
-  }
+exports.redis = {
+  client: {
+    host: process.env.RedisHost || '127.0.0.1',
+    port: process.env.RedisPort || 6379,
+    password: process.env.RedisPassword,
+    db: process.env.RedisDb || 1,
+  },
+};
 
-  // 生产环境跨域配置
-  config.cors = {
-    origin: ''
-  }
+exports.alinode = {
+  appid: process.env.AlinodeAppid,
+  secret: process.env.AlinodeSecret,
+};
 
-  // 自定义日志路径
-  // https://eggjs.org/zh-cn/core/logger.html
-  config.logger = {
-    dir: `${os.homedir()}/logs/${app.name}`
-  }
+exports.github = {
+  access_token_url: 'https://github.com/login/oauth/access_token',
+  user_info_url: 'https://api.github.com/user',
+  client_id: process.env.GithubClientId || '',
+  client_secret: process.env.GithubClientSecret || '',
+};
 
-  return config
-}
+exports.oss = {
+  client: {
+    accessKeyId: process.env.OssAccessKeyId || '',
+    accessKeySecret: process.env.OssAccessKeySecret || '',
+    bucket: process.env.OssBucket || '',
+    endpoint: 'oss-cn-guangzhou.aliyuncs.com',
+    timeout: '60s',
+  },
+};
+
+exports.io = {
+  init: {},
+  namespace: {
+    '/': {
+      connectionMiddleware: ['connection'],
+      packetMiddleware: ['packet'],
+    },
+  },
+  redis: {
+    host: process.env.RedisHost || '127.0.0.1',
+    port: process.env.RedisPort || 6379,
+    password: process.env.RedisPassword,
+    db: 3,
+  },
+  generateId: (req) => {
+    return `${req._query.userId}_${uuidv4()}`;
+  },
+};
+
+exports.sentry = {
+  dsn: process.env.SentyDsn || '',
+};
+
+exports.mailer = {
+  host: 'smtp.qq.com',
+  port: 465,
+  secure: true, // true for 465, false for other ports
+  auth: {
+    user: process.env.MailerAuthUser, // generated ethereal user
+    pass: process.env.MailerAuthPass, // generated ethereal password
+  },
+};
+
+exports.jwt = {
+  secret: process.env.JwtSecret,
+  secret_refresh: process.env.JwtSecretRefresh,
+  enable: true, // default is false
+  match: '/jwt', // optional
+};

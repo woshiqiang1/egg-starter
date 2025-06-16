@@ -1,163 +1,162 @@
-'use strict'
+'use strict';
 
-const os = require('os')
-const { v4: uuidv4 } = require('uuid')
-const WechatCrypt = require('./wechatCrypt')
+const os = require('os');
 
-/**
- * 新旧接口兼容的版本号标识，有不兼容的代码时更新该版本号，主要为了应对审核以及通过 24h 内没有更新到最新版本的用户
- * 当需要发新版本时，用户已全部更新到最新版本，所以每次只要有不兼容的更新，只需要更新该版本号即可
- */
-const version = [ 1, 0, 0 ]
-
-module.exports = {
+module.exports.tools = {
   /**
-   * 组装菜单树
-   * @param {array} data 菜单列表
-   * @param {array} parentId 菜单所属的父级
-   * @return {array} 组装好的菜单树
+   * findAll请求根据rule处理query值
+   * @param rule 规则
+   * @param queryOrigin 原请求参数
+   * @param ruleOther 追加规则
+   * @param findAllParamsOther 追加搜索字段
+   * @param keywordLikeExcludeParams 关键字keyword模糊搜索排除字段
+   * @return {{query: {where: {}}, allRule: {offset: {default: number, type: string, required: boolean}, prop_order: {values, type: string, required: boolean}, limit: {type: string, required: boolean}, order: {values: [string, string, string], type: string, required: boolean}}}}
    */
-  toTreeData(data, parentId = 0) {
-    if (data.length <= 0) {
-      return []
+  findAllParamsDeal(options) {
+    const { rule, queryOrigin, ruleOther = {}, findAllParamsOther = {}, keywordLikeExcludeParams = [] } = options;
+    const _rule = lodash.cloneDeep(rule);
+    const query = {
+      where: {},
+    };
+    for (const ruleKey in _rule) {
+      _rule[ruleKey].required = false;
     }
-    function traverse(id) {
-      const res = []
-      const items = data.filter(item => item.parentId === id)
-      if (items.length <= 0) {
-        return null
+    const findAllParams = {
+      keyword: {
+        type: 'string',
+        trim: true,
+        required: false,
+        max: 36,
+      },
+      prop_order: {
+        type: 'enum',
+        required: false,
+        values: [...Object.keys(_rule), ''],
+      },
+      order: {
+        type: 'enum',
+        required: false,
+        values: ['desc', 'asc', ''],
+      },
+      limit: {
+        type: 'number',
+        required: false,
+      },
+      offset: {
+        type: 'number',
+        required: false,
+        default: 0,
+      },
+      ...findAllParamsOther,
+    };
+    const allRule = {
+      ..._rule,
+      ...ruleOther,
+      ...findAllParams,
+    };
+    // 根据rule处理query，剔除非rule检查字段
+    for (const queryKey in queryOrigin) {
+      if (_rule.hasOwnProperty(queryKey)) {
+        query.where[queryKey] = queryOrigin[queryKey];
       }
-      items.forEach(item => {
-        delete item.createdAt
-        delete item.updatedAt
-        if (item.meta) {
-          item.meta = JSON.parse(item.meta)
-        }
-        res.push({ ...item, children: traverse(item.id) })
-      })
-      return res
-    }
-    return traverse(parentId)
-  },
-  /**
-   * 生成 uid
-   * @return {string} 例如：9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d
-   */
-  createUid() {
-    return uuidv4()
-  },
-  /**
-   * 解密微信数据
-   * @param {String} data 微信数据
-   * @param {string} data.appId 微信公众号的 appId
-   * @param {string} data.sessionKey 微信授权登录成功后的 sessionKey
-   * @param {string} data.encryptedData 需要解密的数据
-   * @param {string} data.iv 初始向量
-   * @return {*} 返回解密后的数据
-   */
-  wechatCrypt({ appId, sessionKey, encryptedData, iv }) {
-    const res = new WechatCrypt(appId, sessionKey)
-    return res.decryptData(encryptedData, iv)
-  },
-  /**
-   * 判断版本号是否大于指定版本
-   * @param {string} v1 当前版本号
-   * @param {string} v2 目标版本号
-   * @return {number} 对比结果，1：当前版本大于指定版本，0：当前版本等于指定版本，-1：当前版本小于指定版本
-   */
-  thanVersion(v1, v2) {
-    // 如果没有当前版本号，直接返回
-    if (!v1) return 0
-    v1 = v1.split('.')
-    // 如果没传递目标版本号，则默认使用内置的版本号
-    v2 = v2 ? v2.split('.') : version
-    const len = Math.max(v1.length, v2.length)
-    // 补全版本号位数
-    while (v1.length < len) {
-      v1.push('0')
-    }
-    while (v2.length < len) {
-      v2.push('0')
-    }
-    // 对比版本号
-    for (let i = 0; i < len; i++) {
-      const num1 = parseInt(v1[i])
-      const num2 = parseInt(v2[i])
-      if (num1 > num2) {
-        return 1
-      } else if (num1 < num2) {
-        return -1
+      if (allRule.hasOwnProperty(queryKey)) {
+        query[queryKey] = queryOrigin[queryKey];
       }
     }
-    return 0
-  },
-  /**
-   * JSON 转字符串
-   * @param {*} data 数据源
-   * @return {string} 转换后的 JSON 字符串
-   */
-  stringify(data) {
-    return JSON.stringify(data)
-  },
-  /**
-   * JSON 字符串转 JSON
-   * @param {*} data 数据源
-   * @return {*} JSON
-   */
-  parse(data) {
-    return JSON.parse(data)
-  },
-  /**
-   * 获取本机 IP 地址
-   * @return {string} IP 地址
-   */
-  getLocalhost() {
-    const interfaces = os.networkInterfaces()
-    for (const devName in interfaces) {
-      const iface = interfaces[devName]
-      for (let i = 0; i < iface.length; i++) {
-        const alias = iface[i]
-        if (alias.family === 'IPv4' && alias.address !== '127.0.0.1' && !alias.internal) {
-          return alias.address
+    // 如果搜索参数queryOrigin中带有keyword，且不为空字符串，则视keyword为模糊搜索
+    if (queryOrigin.hasOwnProperty('keyword') && queryOrigin.keyword.trim() !== '') {
+      query.where[Op.or] = [];
+      for (const queryKey in _rule) {
+        // 非模糊搜索排除字段的所有rule中的字段, 且数据类型为string，做模糊查询
+        if (!keywordLikeExcludeParams.includes(queryKey) && _rule[queryKey].type === 'string') {
+          query.where[Op.or].push({ [queryKey]: { [Op.like]: `%${queryOrigin.keyword.trim()}%` } });
         }
       }
     }
-    return '127.0.0.1'
+
+    return {
+      allRule,
+      query,
+    };
   },
-  /**
-   * 请求体部分
-   */
-  /**
-   * 请求成功
-   * @param {object} data 响应数据，可以是对象或者数组
-   * @param {string} message 提示信息
-   */
-  success(data, message) {
-    const { ctx } = this
+};
+
+module.exports.body = {
+  // [GET]：服务器成功返回用户请求的数据
+  SUCCESS({ ctx, res = null, msg = '请求成功', code = 0 }) {
     ctx.body = {
-      ...ctx.app.config.resCode.success,
-      data,
-      message
-    }
+      code,
+      data: res,
+      msg,
+    };
+    ctx.status = 200;
   },
-  /**
-   * 参数异常
-   * @param {object} data 响应数据，可以是对象或者数组
-   * @param {string} message 提示信息
-   */
-  error(data, message) {
-    const { ctx } = this
+
+  // [POST/PUT/PATCH]：用户新建或修改数据成功。
+  CREATED_UPDATE({ ctx, res = null, msg = '新建或修改数据成功' }) {
     ctx.body = {
-      ...ctx.app.config.resCode.error,
-      data,
-      message
-    }
+      code: 0,
+      data: res,
+      msg,
+    };
+    ctx.status = 201;
   },
-  /**
-   * 未登录
+
+  /*
+   * @description [DELETE]：用户删除数据成功。
    */
-  notLogged() {
-    const { ctx } = this
-    ctx.body = ctx.app.config.resCode.notLogged
-  }
-}
+  NO_CONTENT({ ctx, res = null, msg = '删除数据成功' }) {
+    ctx.body = {
+      code: 0,
+      data: res,
+      msg,
+    };
+    ctx.status = 204;
+  },
+
+  // [POST/PUT/PATCH]：用户发出的请求有错误，服务器没有进行新建或修改数据的操作
+  INVALID_REQUEST({
+    ctx,
+    res = null,
+    msg = '请求有错误，服务器没有进行新建、修改、删除数据的操作',
+    code = 400,
+    status = 400,
+  }) {
+    ctx.body = {
+      code,
+      data: res,
+      msg,
+    };
+    ctx.status = status;
+  },
+
+  // [*] 表示用户得到授权（与401错误相对），但是访问是被禁止的。
+  FORBIDDEN({ ctx, res = null, msg = '权限不足，访问被禁止' }) {
+    ctx.body = {
+      code: 403,
+      data: res,
+      msg,
+    };
+    ctx.status = 403;
+  },
+
+  // [*]：用户发出的请求针对的是不存在的记录，服务器没有进行操作
+  NOT_FOUND({ ctx, res = null, msg = '资源未找到', status = 200 }) {
+    ctx.body = {
+      code: 404,
+      data: res,
+      msg,
+    };
+    ctx.status = status;
+  },
+
+  // [*] 参数发生验证错误。
+  VALIDATION_FAILED({ ctx, res = null, msg = '参数发生验证错误' }) {
+    ctx.body = {
+      code: 422,
+      data: res,
+      msg,
+    };
+    ctx.status = 422;
+  },
+};
